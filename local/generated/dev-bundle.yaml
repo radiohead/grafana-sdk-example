@@ -1,0 +1,772 @@
+kind: CustomResourceDefinition
+apiVersion: apiextensions.k8s.io/v1
+metadata:
+    name: foos.grafana-sdk-example.ext.grafana.com
+spec:
+    group: grafana-sdk-example.ext.grafana.com
+    versions:
+        - name: v0-0
+          served: true
+          storage: true
+          schema:
+            openAPIV3Schema:
+                properties:
+                    spec:
+                        description: |-
+                            spec is the schema of our resource. The spec should include all the user-ediable information for the kind.
+
+
+                            status is where state and status information which may be used or updated by the operator or back-end should be placed
+                            If you do not have any such information, you do not need to include this field,
+                            however, as mentioned above, certain fields will be added by the kind system regardless.
+                            status: {
+                            	currentState: string
+                            }
+                            metadata if where kind- and schema-specific metadata goes. This is typically unused,
+                            as the kind system's common metadata is always part of `metadata` and covers most metadata use-cases.
+                            metadata: {
+                            	kindSpecificField: string
+                            }
+                        properties:
+                            name:
+                                type: string
+                        required:
+                            - name
+                        type: object
+                    status:
+                        properties:
+                            additionalFields:
+                                description: additionalFields is reserved for future use
+                                type: object
+                                x-kubernetes-preserve-unknown-fields: true
+                            operatorStates:
+                                additionalProperties:
+                                    properties:
+                                        descriptiveState:
+                                            description: descriptiveState is an optional more descriptive state field which has no requirements on format
+                                            type: string
+                                        details:
+                                            description: details contains any extra information that is operator-specific
+                                            type: object
+                                            x-kubernetes-preserve-unknown-fields: true
+                                        lastEvaluation:
+                                            description: lastEvaluation is the ResourceVersion last evaluated
+                                            type: string
+                                        state:
+                                            description: |-
+                                                state describes the state of the lastEvaluation.
+                                                It is limited to three possible states for machine evaluation.
+                                            enum:
+                                                - success
+                                                - in_progress
+                                                - failed
+                                            type: string
+                                    required:
+                                        - lastEvaluation
+                                        - state
+                                    type: object
+                                description: |-
+                                    operatorStates is a map of operator ID to operator state evaluations.
+                                    Any operator which consumes this kind SHOULD add its state evaluation information to this field.
+                                type: object
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                required:
+                    - spec
+                type: object
+          subresources:
+            status: {}
+    names:
+        kind: Foo
+        plural: foos
+    scope: Namespaced
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: foo-user
+rules:
+  - apiGroups:
+      - grafana-sdk-example.ext.grafana.com
+    resources:
+      - foos
+    verbs:
+      - create
+      - update
+      - patch
+      - delete
+      - deletecollection
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: foo-lister
+rules:
+  - apiGroups:
+      - grafana-sdk-example.ext.grafana.com
+    resources:
+      - foos
+    verbs:
+      - get
+      - list
+      - watch
+---
+﻿apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: minio
+  name: minio
+  namespace: default
+spec:
+  ports:
+    - name: minio-minio
+      port: 9000
+      targetPort: 9000
+  selector:
+    name: minio
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: default
+spec:
+  minReadySeconds: 10
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      name: minio
+  template:
+    metadata:
+      labels:
+        name: minio
+    spec:
+      containers:
+        - args:
+            - mkdir -p /data/cortex && mkdir -p /data/loki && /usr/bin/minio server /data
+          command:
+            - /bin/bash
+            - -c
+          env:
+            - name: MINIO_ACCESS_KEY
+              value: minio
+            - name: MINIO_SECRET_KEY
+              value: minio123
+            - name: MINIO_PROMETHEUS_AUTH_TYPE
+              value: public
+          image: minio/minio:RELEASE.2021-06-07T21-40-51Z
+          imagePullPolicy: IfNotPresent
+          name: minio
+          ports:
+            - containerPort: 9000
+              name: minio
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cortex-config
+  namespace: default
+data:
+  config.yaml: |
+    # Configuration for running Cortex in single-process mode.
+    # This configuration should not be used in production.
+    # It is only for getting started and development.
+
+    # Disable the requirement that every request to Cortex has a
+    # X-Scope-OrgID header. `fake` will be substituted in instead.
+    auth_enabled: false
+
+    server:
+      http_listen_port: 9009
+      grpc_listen_port: 9095
+
+      # Configure the server to allow messages up to 100MB.
+      grpc_server_max_recv_msg_size: 104857600
+      grpc_server_max_send_msg_size: 104857600
+      grpc_server_max_concurrent_streams: 1000
+
+    distributor:
+      shard_by_all_labels: true
+      pool:
+        health_check_ingesters: true
+
+    ingester_client:
+      grpc_client_config:
+        # Configure the client to allow messages up to 100MB.
+        max_recv_msg_size: 104857600
+        max_send_msg_size: 104857600
+        grpc_compression: gzip
+
+    ingester:
+      # We want our ingesters to flush chunks at the same time to optimise
+      # deduplication opportunities.
+      spread_flushes: true
+      chunk_age_jitter: 0
+
+      walconfig:
+        wal_enabled: true
+        recover_from_wal: true
+        wal_dir: /tmp/cortex/wal
+
+      lifecycler:
+        # The address to advertise for this ingester.  Will be autodiscovered by
+        # looking up address on eth0 or en0; can be specified if this fails.
+        # address: 127.0.0.1
+
+        # We want to start immediately and flush on shutdown.
+        join_after: 0
+        min_ready_duration: 0s
+        final_sleep: 0s
+        num_tokens: 512
+        tokens_file_path: /tmp/cortex/wal/tokens
+
+        # Use an in memory ring store, so we don't need to launch a Consul.
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+
+    storage:
+      engine: blocks
+
+    blocks_storage:
+      tsdb:
+        dir: /tmp/cortex/tsdb
+      bucket_store:
+        sync_dir: /tmp/cortex/tsdb-sync
+
+      backend: filesystem
+      filesystem:
+        dir: /tmp/cortex/blocks
+
+    purger:
+      object_store_type: filesystem
+
+    frontend_worker:
+      # Configure the frontend worker in the querier to match worker count
+      # to max_concurrent on the queriers.
+      match_max_concurrent: true
+
+    # Configure the ruler to scan the /tmp/cortex/rules directory for prometheus
+    # rules: https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules
+    ruler:
+      enable_api: true
+      enable_sharding: false
+      storage:
+        type: s3
+        s3:
+          s3: http://minio:minio123@minio.default.svc.cluster.local:9000
+          bucketnames: cortex
+          s3forcepathstyle: true
+
+    querier:
+      at_modifier_enabled: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: cortex
+  name: cortex
+  namespace: default
+spec:
+  ports:
+    - name: cortex-http
+      port: 9009
+      targetPort: 9009
+    - name: cortex-grpc
+      port: 9095
+      targetPort: 9095
+  selector:
+    name: cortex
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cortex
+  namespace: default
+spec:
+  minReadySeconds: 10
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      name: cortex
+  template:
+    metadata:
+      annotations:
+        cortex-config-hash: 128d9bf6025033e3552baff9d5bb7715
+      labels:
+        name: cortex
+    spec:
+      containers:
+        - args:
+            - -config.file=/etc/cortex/config.yaml
+          env:
+            - name: JAEGER_AGENT_HOST
+              value: tempo
+            - name: JAEGER_ENDPOINT
+              value: http://agent.default.svc.cluster.local:14268/api/traces
+            - name: JAEGER_SAMPLER_TYPE
+              value: const
+            - name: JAEGER_SAMPLER_PARAM
+              value: "1"
+          image: cortexproject/cortex:v1.9.0
+          imagePullPolicy: IfNotPresent
+          name: cortex
+          ports:
+            - containerPort: 9009
+              name: http
+            - containerPort: 9095
+              name: grpc
+          volumeMounts:
+            - mountPath: /etc/cortex
+              name: cortex-config
+      volumes:
+        - configMap:
+            name: cortex-config
+          name: cortex-config
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cortex-ingress
+  namespace: default
+spec:
+  rules:
+    - host: cortex.k3d.localhost
+      http:
+        paths:
+          - backend:
+              service:
+                name: cortex
+                port:
+                  number: 9009
+            path: /
+            pathType: Prefix
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: default
+data:
+  overrides.yaml: |
+    overrides: 
+  tempo.yaml: |
+    auth_enabled: false
+    server:
+      http_listen_port: 3100
+    compactor:
+      compaction:
+        compacted_block_retention: 24h
+    distributor:
+      receivers:
+        jaeger:
+          protocols:
+            thrift_compact:
+              endpoint: 0.0.0.0:6831
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+    ingester: {}
+    storage:
+      trace:
+        backend: local
+        search:
+        local:
+          path: /tmp/tempo/traces
+        wal:
+          path: /tmp/tempo/wal 
+          v2_encoding: none
+          search_encoding: none
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: default
+spec:
+  minReadySeconds: 10
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      name: tempo
+  template:
+    metadata:
+      annotations:
+        tempo-config-hash: 1a64b8ef2f49f5c9e8057582936f2f7b
+      labels:
+        name: tempo
+    spec:
+      containers:
+      - args:
+        - -config.file=/conf/tempo.yaml
+        - -mem-ballast-size-mbs=1024
+        image: grafana/tempo:2.2.0
+        imagePullPolicy: IfNotPresent
+        name: tempo
+        ports:
+        - containerPort: 3100
+          name: http
+        - containerPort: 4317
+          name: otlp-http
+        volumeMounts:
+        - mountPath: /conf
+          name: tempo-config
+      volumes:
+      - configMap:
+          name: tempo-config
+        name: tempo-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: tempo
+  name: tempo
+  namespace: default
+spec:
+  ports:
+  - name: tempo-http
+    port: 3100
+    targetPort: 3100
+  - name: tempo-otlp-http
+    port: 4317
+    targetPort: 4317
+  selector:
+    name: tempo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: grafana:foo-user-rolebinding
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: foo-user
+subjects:
+  - kind: ServiceAccount
+    name: grafana
+    namespace: default
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-sdk-example-app-provisioning
+  namespace: default
+  labels:
+    name: grafana
+data:
+  gas-local-env-app-app.yaml: |
+    apiVersion: 1
+    apps:
+      - type: grafana-sdk-example-app
+        org_id: 1
+        org_name: Main Org.
+        disabled: false
+        jsonData:
+          foo: bar
+        secureJsonData:
+          baz: foo
+          kubeconfig: cluster
+          kubenamespace: default
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: default
+  labels:
+    name: grafana
+data:
+  grafana.ini: | 
+    [analytics]
+    reporting_enabled = false
+    [tracing.opentelemetry.otlp]
+    address = tempo.default.svc:4317
+    [auth.anonymous]
+    enabled = true
+    org_role = Admin
+    [log.frontend]
+    enabled = true
+    [plugins]
+    allow_loading_unsigned_plugins = grafana-sdk-example-app
+    [plugin.grafana-sdk-example-app]
+    tracing = true
+    [server]
+    http_port = 3000
+    root_url = 
+    router_logging = true
+    [unified_alerting]
+    enabled = true
+    [users]
+    default_theme = dark
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: default
+  labels:
+    name: grafana
+spec:
+  ports:
+    - name: grafana-grafana-metrics
+      port: 3000
+      targetPort: 3000
+    - name: http
+      port: 80
+      targetPort: 3000
+  selector:
+    name: grafana
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: default
+spec:
+  minReadySeconds: 10
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      name: grafana
+  template:
+    metadata:
+      labels:
+        name: grafana
+    spec:
+      containers:
+        - env:
+            - name: GF_INSTALL_PLUGINS
+            - name: GF_PATHS_CONFIG
+              value: /etc/grafana-config/grafana.ini
+          image: grafana/grafana-enterprise:9.5.8
+          imagePullPolicy: IfNotPresent
+          name: grafana
+          ports:
+            - containerPort: 3000
+              name: grafana-metrics
+          resources:
+            requests:
+              cpu: 10m
+              memory: 40Mi
+          volumeMounts:
+            - mountPath: /etc/grafana-config
+              name: grafana-config
+            - mountPath: /etc/grafana/provisioning/plugins
+              name: grafana-sdk-example-app-provisioning
+            - mountPath: /var/lib/grafana/plugins/grafana-sdk-example-app
+              name: grafana-sdk-example-app
+              readOnly: true
+            - mountPath: /etc/grafana/provisioning/datasources
+              name: grafana-datasources
+      serviceAccount: grafana
+      volumes:
+        - configMap:
+            name: grafana-config
+          name: grafana-config
+        - configMap:
+            name: grafana-sdk-example-app-provisioning
+          name: grafana-sdk-example-app-provisioning
+        - hostPath:
+            path: /tmp/k3d/mounted-files/plugin/dist
+          name: grafana-sdk-example-app
+        - configMap:
+            name: grafana-datasources
+          name: grafana-datasources
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: default
+spec:
+  rules:
+    - host: grafana.k3d.localhost
+      http:
+        paths:
+          - backend:
+              service:
+                name: grafana
+                port:
+                  number: 80
+            path: /
+            pathType: Prefix
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    name: grafana
+  name: grafana-datasources
+  namespace: default
+data:
+  Cortex.yml: |
+    apiVersion: 1
+    datasources:
+        - access: proxy
+          editable: false
+          isDefault: true
+          name: grafana-k3d-cortex-prom
+          type: prometheus
+          uid: grafana-prom-cortex
+          url: http://cortex.default.svc.cluster.local:9009/api/prom
+          version: 1
+        - access: proxy
+          editable: false
+          isDefault: false
+          name: grafana-k3d-tempo
+          type: tempo
+          uid: grafana-traces-tempo
+          url: http://tempo.default.svc.cluster.local:3100
+          version: 1
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: operator
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: operator:foo-user-rolebinding
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: foo-user
+subjects:
+  - kind: ServiceAccount
+    name: operator
+    namespace: default
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: webhook-tls-certs
+  namespace: default
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUdUekNDQkRlZ0F3SUJBZ0lDQm5vd0RRWUpLb1pJaHZjTkFRRUxCUUF3Z1pZeEN6QUpCZ05WQkFZVEFsVlQKTVFrd0J3WURWUVFJRXdBeEZqQVVCZ05WQkFjVERWTmhiaUJHY21GdVkybHpZMjh4R3pBWkJnTlZCQWtURWtkdgpiR1JsYmlCSFlYUmxJRUp5YVdSblpURU9NQXdHQTFVRUVSTUZPVFF3TVRZeE56QTFCZ05WQkFvVExrZHlZV1poCmJtRXRRWEJ3TFZORVN5QkhaVzVsY21GMFpXUWdURzlqWVd3Z1JXNTJhWEp2Ym0xbGJuUWdRMEV3SGhjTk1qTXgKTURBMU1UVXlPVFEwV2hjTk16TXhNREExTVRVeU9UUTBXakNCcHpFTE1Ba0dBMVVFQmhNQ1ZWTXhDVEFIQmdOVgpCQWdUQURFV01CUUdBMVVFQnhNTlUyRnVJRVp5WVc1amFYTmpiekViTUJrR0ExVUVDUk1TUjI5c1pHVnVJRWRoCmRHVWdRbkpwWkdkbE1RNHdEQVlEVlFRUkV3VTVOREF4TmpGSU1FWUdBMVVFQ2hNL1IzSmhabUZ1WVMxQmNIQXQKVTBSTElFZGxibVZ5WVhSbFpDQk1iMk5oYkNCRmJuWnBjbTl1YldWdWRDQlhaV0pvYjI5cklGTmxjblpsY2lCRApaWEowTUlJQ0lqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FnOEFNSUlDQ2dLQ0FnRUE2a2g3bzRENFd0TDVuaW10CjNsZlpRNkYzM1h4T0xIcGQ1U2NWUERrNXByQ1VESHhPNEg2a2Jqa3FFeUFVUXhua0IzbVBWL2g3bzl0YWlFOWMKcXhMNW8zOGdISHkybmZHRlZudklPMGZhTFRoT1dOWmtHVGkwVkE4TGpCSm10VnMxVFZVa2w0SDR3N3BleTNUdApLZUs3eHRrejQxUTU3TncvamVpMCtBTjExcEJnVWRYamQ1VzlhRFNyNVB0blJoUXNOT3hpK1pUeTk5aU4zak1kCmhUcWwrdzFvOE1DL1ZWK3Qyd01YTm5iVUsxTTFMbG5MeGYxRzhkZGJPRUsralZkMGpnSld1dG9Nc1N5b2plL3AKWkMyd1pKNnRvRHlvbW5sT0k1Y0dJNWJvQzhBelJTdWpPYlZIQmFiMmNHVWVzU2xQN3haZHBtK3poWVlubnZQWQpzVG14TVJHeEJYODdFbUNoTW1mWjRpYXIzU2owN2ZIb3pnTlpOT1VqcVB1aTNUMGhzMXgxZy9ET1JmZDJvNVI2CkF6OTlHenBISmxuL01ja2diUXB2aENYaUFhWnR0dHZPWVZrWVU4ejh2ZUxNMkdhSGd6WUNHbmRDWklUOE82VzUKMG9GVkYya205ZGUybHE5bUh5QWdibE9BQlI2eXhML3diMm5GbHJpRkFXR20ycUdSbXBtbW5pS2QxNkNRS2RKZgo3NmhKbkhQbzFQYmhpRkt0NDJUaWQvQ25pVjFtSEJJeXRRRElRT09nSzhkOWVuME1mYnoyS0I5Rk5TRzRNS2FpCjVRZytTS0wvR2MrMCtXVkVnRkh2NDVDTk5pRjl0M1ZvdFNPckpwa1BUSHpqUnZ5dzB5aGhKL1JweW5RRHpvT0wKeWNpaWo4c3F0V1N1QWhzM0RwRVEyQnRXdVFjQ0F3RUFBYU9Ca3pDQmtEQU9CZ05WSFE4QkFmOEVCQU1DQjRBdwpIUVlEVlIwbEJCWXdGQVlJS3dZQkJRVUhBd0lHQ0NzR0FRVUZCd01CTUE0R0ExVWREZ1FIQkFVQkFnTUVCakJQCkJnTlZIUkVFU0RCR2dpeG5jbUZtWVc1aExYTmtheTFsZUdGdGNHeGxMV0Z3Y0MxdmNHVnlZWFJ2Y2k1a1pXWmgKZFd4MExuTjJZNGNFZndBQUFZY1FBQUFBQUFBQUFBQUFBQUFBQUFBQUFUQU5CZ2txaGtpRzl3MEJBUXNGQUFPQwpBZ0VBUVQ2SHRNM0UxNDZFUnZPRzdvYkozM3dueGtlR2E1MStHdFFuZ1dIWVlNaWp6QXRMVTcwWFJuTGpEakhuCkV0RDU5OXNTK0NSWXdvZUhIV2pCYWNSOWFxUGh1cTZHbzMySTY5TmViZEpEWmI1SE02YTgvZHF5OTlYOXNJYkoKMHdlZ0pzWFVQQ21HUnRueXJRaFc5L0NWWTR3a0ZJZlNvRkNsSkxmODczaHhYUkxNRXpTY25lZGRMNFVyZDVITgpYOXJNSWsvMmdGc2J6RlZsRFkyeWw4ZERydWpab2t2RzRaWG41ZXdOZjRZK0M3Vk5qSUZtWXZYTnNBTDArMFFUClZTYWJSckdrRzV4V29LYVZ2SUdnOFA5TG9va1NuOG9LYUR5WDVjaTAzdXpEYStGNjlFZUIwaDJkY1ZNQWp1MzkKKytzdmNNSTVUNXAyMGljQkUrWkkwb0l3SlZmc2V2dHcwZVFyTHdjRU1uMXpISnpNVXVmaUxlRmpSWmd3bFRoeQpuY2tYK05VMUNua0hsN3kvOUJhc2dPMmk5MHhldkZEcjErK3V6UWF4VGp1UVBSVkZoSWVCOWwrZDJvV04xRnArCk9Qb3RMNnEwVWdSK0ZnQjJPb3IzM2U5TWJJRXdJaFdBbWtXa2NsdWhXRFZTN0FHVzFack1HVWcwWDJDL2RSbTQKT2hmczNOb3NVY1EvWVNjbHJCV2JEL3Zkb2FNT0hxMXhnNGJydWFVcHBjZzJMUjhnUW1mUi9qd1U0a1JPd1BoQwpoZko4bktiUlM5ckJrVW95Vm1tUUhCOXZPdzhtNnZCdWFrMDJKbHd6NkVkdnJMT2kybGsvci9DSXlYR0dsWHlyCm5DeUR2dUF4MFZ2TG5kOTN1S3lpQi9CZGZaSEdlWmNvTVU0K3I0VEptT2VUTzlBPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  tls.key: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlKS0FJQkFBS0NBZ0VBNmtoN280RDRXdEw1bmltdDNsZlpRNkYzM1h4T0xIcGQ1U2NWUERrNXByQ1VESHhPCjRINmtiamtxRXlBVVF4bmtCM21QVi9oN285dGFpRTljcXhMNW8zOGdISHkybmZHRlZudklPMGZhTFRoT1dOWmsKR1RpMFZBOExqQkptdFZzMVRWVWtsNEg0dzdwZXkzVHRLZUs3eHRrejQxUTU3TncvamVpMCtBTjExcEJnVWRYagpkNVc5YURTcjVQdG5SaFFzTk94aStaVHk5OWlOM2pNZGhUcWwrdzFvOE1DL1ZWK3Qyd01YTm5iVUsxTTFMbG5MCnhmMUc4ZGRiT0VLK2pWZDBqZ0pXdXRvTXNTeW9qZS9wWkMyd1pKNnRvRHlvbW5sT0k1Y0dJNWJvQzhBelJTdWoKT2JWSEJhYjJjR1Vlc1NsUDd4WmRwbSt6aFlZbm52UFlzVG14TVJHeEJYODdFbUNoTW1mWjRpYXIzU2owN2ZIbwp6Z05aTk9VanFQdWkzVDBoczF4MWcvRE9SZmQybzVSNkF6OTlHenBISmxuL01ja2diUXB2aENYaUFhWnR0dHZPCllWa1lVOHo4dmVMTTJHYUhnellDR25kQ1pJVDhPNlc1MG9GVkYya205ZGUybHE5bUh5QWdibE9BQlI2eXhML3cKYjJuRmxyaUZBV0dtMnFHUm1wbW1uaUtkMTZDUUtkSmY3NmhKbkhQbzFQYmhpRkt0NDJUaWQvQ25pVjFtSEJJeQp0UURJUU9PZ0s4ZDllbjBNZmJ6MktCOUZOU0c0TUthaTVRZytTS0wvR2MrMCtXVkVnRkh2NDVDTk5pRjl0M1ZvCnRTT3JKcGtQVEh6alJ2eXcweWhoSi9ScHluUUR6b09MeWNpaWo4c3F0V1N1QWhzM0RwRVEyQnRXdVFjQ0F3RUEKQVFLQ0FnQTMxT0l5Q3RBa3hOWmJ6TTcwaDdidEdSTzVvcC8ybFlxK3kxdVNLSWtHb2xvRng3SDhhZkhCbXJuZQpLT3pyT01aUXliVlJYNVFIYm9UYXF4OElYZE5FRlUyUHZHREFyd2Y1bmpJUGZvWU45TGNuRUtCMktqOC9NUDZ0CmVNMGxOd0V5MXJHTHNadVkrVmNSNFdHTGM4OFFDajhGVTlNaUVUTE1ITUxUdis5YkhMajNoNk5Yb2tXckNiSlYKTlZ4ZEpQMkw5ekYzRFBvQitvZUVobVhvbEJ0dUFyb1pkYldqSU5RTHQyYld3ZWE2RkhBK0JZUThRS21oaEpMbQppM0ZodVkrN0wrOS9RK3QyWlpBZGt5anBpTUhhbUw0RHk3RGFiMEloMVNIUFpXMFRMOUNJRVdncW5ucTRiQnVhCm1WNkJGYmxJM3VtZWVrd3I2OWFSV01jeEpQQ0dyazNCR0NwbHlWaFFRbjdocGV6KzlSSFNrdmtIaitaWmNCMG8KZm1LeTF2ZmFoMCs2eXlvSlZLR1ZoWk5KSWhiSzJva2NVWmVlUDRUc0NzblZpcVJHblc4eGw3a2hqWTRoM3NQbApGekZ1a3huYVpjaytZYU1DZ2lqeDFHOG5Jdm15R29oaFpPM1ZnQ1h6SzlQaGRXa3JtYzVSdG5TK0Y3MjFwS1pECnpVbTVLM3VzZmwxclFOeWRJdGlUelp6VDlFRzFzbW44RXpVdDFCSXp5YktlYllWWDFkZ0gvK1NLQkNvb3Uzc08KNm5PM21zc3JoRzh6TEZtc1A4VU8xQTFIZVZOQkdud1FZMk1lUndhcWVMZkF2eHlRWXVkQkZya3k5K0RlVVh4bwpNLzRzZjk5bGtNaFp2N0ExTlArc0FVbUtTdnQ5akViTjFVK2xtMzhqcFBoWTJmSVpnUUtDQVFFQTdrMzNKb3VxCkxDdHJYRnFMVDJHL1BaR01mMDB0Sk50Q1BrTjB6alI4eEtMOUV2SjZsRDRiTUJObGFLZ3B6ZFFjL1VvcWR1d24KOHA0ODVuNlJlRnRnZTVmSDFxUWxESit4eHlPeW1SQUJkcmIxWTllRzVJY3EvMzllYXBOS25zQURZdFZLYTJabQpzRzU4UTNHdUZyeUovNEEvQXB4MlorMXY3NndDQXpITmExK1JBVnJsY2hObEJrRHNXYUZSVWJJazJPMzhsV0xYCmZPU1BhcEY1ZDBWcG42cGo3TUtUVDdLQmRubXE1REFubVQxem1uM3hHSDR2UFNJRm5zUU5OdVEweDhEOGFuUk8KQUhkY1ZIZmNmcWQ2ZmlVenpPVU93Ukt6bVZsUDk5Szg3TTN3dkJiUjMxRFRBV1BHS2xzNTdxWnk3T1A1a0JjaQoyeWVvbkRQd09Pd3dKd0tDQVFFQSs2NFNuQWQyVGtJbXVXeDBPOXN5MVhHZE92TU5FY3hmK1hwNEhGVHpQb1lZCnJvTFdrUWpkWnBraWxQa3RUL1h6aitWdWxRVVRXK28yOXNUSXhoVkhlb2lWSFhIeGNkRGNTN1lxYWV2enZuZysKNHR2TUFyRzNJQ0gxUFBoaE8zRkxiSFpCbktYR3FsMDlxbUJ4M1pYTVR2N3VMQ2lvWXZ1UklDNm11MThEbm8vTAozVTRGd2RISVoyY1laQzMwb3lVT2I3Nmw4UWViYUZNVlRJZFlmajBuMmc5STh0aHlsbjdOTTNUUWx6UDdXZ3NQClFWYlEyYWVUR05xQ201N0xIdmdtRGhvcnNxQzZjRXJuT0pycXpBeDloZ3MrNFd1WHJrc2NrL0U2MVVjVTVWNXIKT09OMG1qcU4zaU5Qa2NleWJiMXNiNGZXbkt1c2pLazZqT2krUjBYY0lRS0NBUUIwSXRUM0dRdTIrUFlhalJubApkdXFmazhaWDZBRy9PNGZlRmp2Zm5wN0xxZThTQTlBUFhQRWREZWJYQ1ZWT05UaG5qSFNEZm5XOWZMYUxVbFdNCnhXT1ErQmh4RjQvaXhoVDZ5di9vTG0rNExsUUs4MmVQQ2Z5L2haQTYra3RjY0pGMTRpS2hrc2NxNXIxeWxQMVYKb1U3VGtPbWtXU0l2WmZ5dVhqS2c0ZTJOallaNmxaVEtjbjlDZS9OemZ2WEZqYjc5WllZNk8zQnZNbWhlZEVVeApCa2dDZ3lTdHB1bnA1a0hIdm1XMVRXNk85TzdZOU5YQnJRVlNrcmtRZGRWRzBoS1M0dzlneGd1Wm1KSUxyRnB0Cjh5cjBQU2N3ak5VUzdRMVFCOEc4TWh6V2YwcjZMMWphcjJZV0FFejhLWGRqUWdVeVE2eEZON0ZLQXRyZVBVV3UKU0JUekFvSUJBUURJVXZHMUI2dCs5dUJqenBObDRUOUE3VUc4M2lDVS9odVdNNGpPNUQ4SWtTdXNHN0ExbU56QgpBVHFwWVB4VUhPeFVxTVd3RDI0dFJ1dWcxMWtIY1lDSFk1ZHM3SGpGb3Z6MXRuVmtBYzdzMkVFVnlPVkZiN2JXCitMQitheVRaYjRBZFFMTlF3QksxSDZvcHBzSjdJUFNTSEEvdlRoMVpTK3RqdGo0My9aU2Y3TXpUeFhxSG56Ym8KTndNUEdoVVNsamc3Y1lBYnJYWmhQMkJBbmFvdU1QYzdkZGNXbEhvQWw4VTFJOUd6eUVoVWoyRUJITnozb1k1UAp4ZjBYYVBrOEdVQVJFWHVlbnBoSE1SZUIwcXo0NVNnMFBWYzdqYXdacXVlQVNnNE9ISm5oUjVvSW1lTUJyNEdrClFtN2ZGaGhMaU81Nmg2Q202MjVZTjRySEJhb09pT2lCQW9JQkFBS1dBc0daOGIwWEdLOFRLRnhENXIwbCtab3EKNUtSUytSbmtLNEowVkUxZFQwdFJSb2U3MWtTUHVyRXFMMHlpNm1laEluRmhUWVBSem9oK0MzRG55bGtpVHZaQgpmcVdRQ3FzRFN2VC9heGVGbDdyNzFpcGM4YjVtaTJFZlVzOElaUkFDd1B1L3VWL3Z3SWx1YVYwbHBPa3grbDRMCnFHOTF2dlg3d2dRc2dnRGt4L1E0eTM3N1lBeGtnMWdYdUFaSVU3MDh6RE5xdVUzU0lnK0FIUjQ1UWFPdXV2eW8KZ25aeGxIMkFvcWRzZmdZMlZwRk4wUGxrS0g2dXZWaC9SZ2VXNXhHWGhxSk5RQVhFYUV3aWM5Q0hWMjBNck1nSQpuRVlidHlhRlZIa0U1NE1Fb0FBVjkvREo1U013UEx1WGVQbnR4MEszQWt1N214aEgzamI0MWZsb2hSYz0KLS0tLS1FTkQgUlNBIFBSSVZBVEUgS0VZLS0tLS0K
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-sdk-example-app-operator
+  namespace: default
+spec:
+  minReadySeconds: 10
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      name: grafana-sdk-example-app-operator
+  template:
+    metadata:
+      labels:
+        name: grafana-sdk-example-app-operator
+    spec:
+      serviceAccount: operator
+      containers:
+        - image: localhost/grafana-sdk-example:latest
+          imagePullPolicy: IfNotPresent
+          name: grafana-sdk-example-app-operator
+          env:
+            - name: OTEL_HOST
+              value: tempo.default.svc
+            - name: OTEL_PORT
+              value: "4317"
+            - name: OTEL_CONN_TYPE
+              value: grpc
+            - name: OTEL_SERVICE_NAME
+              value: "grafana-sdk-example-app-operator"
+
+            - name: WEBHOOK_PORT
+              value: "8443"
+            - name: WEBHOOK_CERT_PATH
+              value: /run/secrets/tls/tls.crt
+            - name: WEBHOOK_KEY_PATH
+              value: /run/secrets/tls/tls.key
+
+          ports:
+            - containerPort: 9090
+              name: metrics
+
+            - containerPort: 8443
+              name: webhook-api
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /run/secrets/tls
+              readOnly: true
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: webhook-tls-certs
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-sdk-example-app-operator
+  namespace: default
+spec:
+  selector:
+    name: grafana-sdk-example-app-operator
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+
+    - name: webhook-api
+      port: 443
+      targetPort: webhook-api
+
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: grafana-sdk-example-app-operator-val-webhook
+webhooks:
+  - name: grafana-sdk-example-app-operator.default.svc
+    sideEffects: None
+    admissionReviewVersions: ["v1","v1beta1"]
+    clientConfig:
+      service:
+        name: grafana-sdk-example-app-operator
+        namespace: default
+        path: "/validate"
+      caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUdDekNDQS9PZ0F3SUJBZ0lDQitNd0RRWUpLb1pJaHZjTkFRRUxCUUF3Z1pZeEN6QUpCZ05WQkFZVEFsVlQKTVFrd0J3WURWUVFJRXdBeEZqQVVCZ05WQkFjVERWTmhiaUJHY21GdVkybHpZMjh4R3pBWkJnTlZCQWtURWtkdgpiR1JsYmlCSFlYUmxJRUp5YVdSblpURU9NQXdHQTFVRUVSTUZPVFF3TVRZeE56QTFCZ05WQkFvVExrZHlZV1poCmJtRXRRWEJ3TFZORVN5QkhaVzVsY21GMFpXUWdURzlqWVd3Z1JXNTJhWEp2Ym0xbGJuUWdRMEV3SGhjTk1qTXgKTURBMU1UVXlPVFF3V2hjTk16TXhNREExTVRVeU9UUXdXakNCbGpFTE1Ba0dBMVVFQmhNQ1ZWTXhDVEFIQmdOVgpCQWdUQURFV01CUUdBMVVFQnhNTlUyRnVJRVp5WVc1amFYTmpiekViTUJrR0ExVUVDUk1TUjI5c1pHVnVJRWRoCmRHVWdRbkpwWkdkbE1RNHdEQVlEVlFRUkV3VTVOREF4TmpFM01EVUdBMVVFQ2hNdVIzSmhabUZ1WVMxQmNIQXQKVTBSTElFZGxibVZ5WVhSbFpDQk1iMk5oYkNCRmJuWnBjbTl1YldWdWRDQkRRVENDQWlJd0RRWUpLb1pJaHZjTgpBUUVCQlFBRGdnSVBBRENDQWdvQ2dnSUJBT1lTZGlLRFM4WnBFZjdVb0VWSGx3STM5S3h3eXZKOVNSd1pmcUErClhQNkwwZEdZVTRIbnNzQ1ZCNzZ5WW90YmRrWXlUYUNIcXYwdTdRTWllamhOTW5QVG5oNFhFdW13WDlWRmZXdEYKMEMveDYxcEM5cWVzbjZqM1VEd0xDbENNcnl2ei9KdVJ2TklodGc5RFdzZkNENm5ZRXpmZndRNS9JRE5oZksvTApQNDVmQVlwVG1RRVRGYnBwOWY4TGd2TFhaU1F5VlNiSkRxRmllMnF4dCtlbXlYOVBHR1lUVWphQ21qUkdJQ3R3Cnd2WHpRWGV4SktaaUNXakR5SVFvTWxYeWdZVkt6RmNxV21yakZtbi9HUXVLYm1id3NhUHBXTmd0cTdpTE5yd0YKZW1CS3piaE54L0QrQnFXR0xHbGVqWTRxSjhsMytTU1VWRXFuVEJMWVJyOXZ6NDJyTXBwdzhqYmZ6VGswVzh6aApjcnI5SUp4ZWZSZDJsWGVSV2p1WndIU0NvbDlydjhDVGtyR1JRY25lMXh4SzM1aHhCZUFDeU1SMUx6Y3hjcXVjCkNVamtGU1EzRmxKMEhYaVgreXVSV0wzdE1nWU42YUg3bkVjektqNGVMSURtbUNUMi9WbGUvWXkvOGd4dFZRd2gKdXV4NHVQZCtwdHc3UXNTLzhWbkpzdFN4Z2ZHOVNzTUQ5VnBrbVN2aElDY2pkMDFhVVBhR2pnejBjUERFTE1NRwpaQjNhaC9SVzljOG9ob3hNZm8yOHd1UmR4dnYxd0l2TllWbnVHYXk2WHo1amN5ZGZsNkFEanRkRXZ3cW1qUk5TCnZpVzZlVWdTWjYrUVJuTFk5cjRuRzVUZ0VjVHoyeStDekg4bEh1eDlVSGd1MldKUWUxcklkS0NTQ3M2d1R6WksKV2hXMUFnTUJBQUdqWVRCZk1BNEdBMVVkRHdFQi93UUVBd0lDaERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjRApBZ1lJS3dZQkJRVUhBd0V3RHdZRFZSMFRBUUgvQkFVd0F3RUIvekFkQmdOVkhRNEVGZ1FVOGpTSWFYVVBPekxzClFTb2pSMDBpTVIzUy9lZ3dEUVlKS29aSWh2Y05BUUVMQlFBRGdnSUJBRHhMTmg1UXg3cHkrQmg2U1dtZzFWN3AKT2p1UFoxdUUrdFRLQ0U0MkRZdXNXbE1ZSHE1Snh4K05RRUEzdTI2cGsyOXJ2ek00TVRGQWF3MWh5UkNKZ0duMAozd2dGRUk2cVRaSXlneGVqMDlOcWUxdXRBU2VVQ2pMNk00dHlYTGlFaW9icWxlRG5wTjhvVmVvRkQvcGRPRktHCklQZzNQSjJGV1huWmNMOU92eVVidmJkS29jNy9uV2lRN3d1R3Y3WHBCUUNndTY4NlE2Y0M2bDdIeGtyTVdpaFgKS0d3Z2NkU3ArT1Z2bFdpakhJcWZZcHErQmVLRU5UakJiS0pmd0NMaWxTTWFTeVZFMGxEZGl6Sjg3Vmt6SWNRSwpYUHNhcW44MGtWZk8zZjBkVjNaeXRHckRJenJWK0JDQllFZ1lyMUFOVnBIZFRKZjR2ZkVqMnB3YThRaTdaSFdoClNBUGV6UWNnaDNRc2luV2FMRGQ4TWFuNjZ0d3FjMlRYZDFOQlBXUHNyUzZzZjlvMWpQVExHRkJkQUhERmh1UmoKOTdtbG40bG5icjA1S04vK21TK3VxWm1lcHo0RlRnM0E4bklPdnZnZmI0OEt4MVgyZW5XRlp3VUVXS3F6YVVkcgpMa2d6T3pybzloVm5NVVdXcnQ3bkNLU2JteTNvTkVVWit0ekFmUHlnKyt3Y0MzeTZuQmhBdDB6KzlhdjRSMTdRClIwZE91RHZYZUpzUHUvVzdBejRBamIwcnFQSkJzeGJoNlhMN3N2dmhHbzBDMVp0NEFvUnljL2xyeXhKZDhjUkMKaklBZkZQeFhCMm42R1BOeEhmazJMNkVOUUpNNGdhcUdTeGxZYTB0bDlwaThXclR5SGd5RlVDb1hDUEp5YnF0TQo5OEpoaE9udGFTYU9sam9mUHIyRAotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+    rules:
+    - operations: ["CREATE","UPDATE","DELETE"]
+      apiGroups: ["grafana-sdk-example.ext.grafana.com"]
+      apiVersions: 
+        - v0-0
+      resources: ["foos"]
+  

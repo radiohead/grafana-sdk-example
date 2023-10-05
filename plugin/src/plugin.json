@@ -1,0 +1,42 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/master/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "app",
+  "name": "NAME",
+  "id": "grafana-sdk-example-app",
+  "metrics": true,
+  "backend": true,
+  "executable": "gpx_grafana-sdk-example-app",
+  "info": {
+    "description": "",
+    "author": {
+      "name": "AUTHOR",
+      "url": ""
+    },
+    "keywords": [],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [],
+    "screenshots": [],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+  "includes": [
+    {
+      "name": "Todos",
+      "path": "/a/grafana-sdk-example-app/",
+      "type": "page",
+      "role": "Admin",
+      "addToNav": true,
+      "defaultNav": true,
+      "slug": "grafana-sdk-example",
+      "icon": "",
+      "uid": ""
+    }
+  ],
+  "dependencies": {
+    "grafanaDependency": ">=7.0.0",
+    "plugins": []
+  }
+}
