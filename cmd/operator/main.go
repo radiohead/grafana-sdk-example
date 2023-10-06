@@ -139,18 +139,24 @@ func newRunner(
 	kubeConfig kubeconfig.NamespacedConfig,
 ) (*operator.Operator, error) {
 	cache := foo.NewCache(1024)
-	reconciler := foo.NewReconciler(cache)
-
-	controller := operator.NewInformerController(operator.DefaultInformerControllerConfig())
-	if err := controller.AddReconciler(&operator.TypedReconciler[*foov1.Object]{
-		ReconcileFunc: reconciler.Reconcile,
-	}, foov1.Schema().Kind()); err != nil {
-		return nil, err
-	}
 
 	clientGenerator := k8s.NewClientRegistry(kubeConfig.RestConfig, k8s.ClientConfig{})
 	fooClient, err := clientGenerator.ClientFor(foov1.Schema())
 	if err != nil {
+		return nil, err
+	}
+
+	rec, err := operator.NewOpinionatedReconciler(fooClient, "foo-operator")
+	if err != nil {
+		return nil, err
+	}
+
+	rec.Wrap(&operator.TypedReconciler[*foov1.Object]{
+		ReconcileFunc: foo.NewReconciler(cache).Reconcile,
+	})
+
+	controller := operator.NewInformerController(operator.DefaultInformerControllerConfig())
+	if err := controller.AddReconciler(rec, foov1.Schema().Kind()); err != nil {
 		return nil, err
 	}
 
