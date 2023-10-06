@@ -5,7 +5,7 @@ SOURCES              := $(shell find . -type f -name "*.go")
 MOD_FILES            := go.mod go.sum
 COVOUT               := coverage.out
 OPERATOR_DOCKERIMAGE := "grafana-sdk-example"
-SDK_VER              := 0.11.0
+SDK_VER              := 0.12.1
 
 .PHONY: all
 all: deps lint test build

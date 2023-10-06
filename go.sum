@@ -183,8 +183,8 @@ github.com/gopherjs/gopherjs v0.0.0-20181103185306-d547d1d9531e/go.mod h1:wJfORR
 github.com/gorilla/mux v1.8.0 h1:i40aqfkR1h2SlN9hojwV5ZA91wcXFOvkdNIeFDP5koI=
 github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB71So=
 github.com/gorilla/websocket v1.4.1/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/grafana/grafana-app-sdk v0.12.0 h1:uWlwsvrF5ilcGgsH//C6lfK2cGNVlsWDG19AzQVREnE=
-github.com/grafana/grafana-app-sdk v0.12.0/go.mod h1:wxBlVEODmU+0yuskgv7OZxSFC5LsnFLq6mIYQS6ASac=
+github.com/grafana/grafana-app-sdk v0.12.1 h1:Qd0w/+aalULRom1A5m7bX51tldAtMQ19QJTWWXRBiQE=
+github.com/grafana/grafana-app-sdk v0.12.1/go.mod h1:JmqxhG+cf881Yp6r73LMwk3TpqV1S0uCZ0pECP2kVCY=
 github.com/grafana/grafana-plugin-sdk-go v0.179.0 h1:gaow50UDWLhvVlrPye4rESajpRItEecKi2+i+TE1r7Q=
 github.com/grafana/grafana-plugin-sdk-go v0.179.0/go.mod h1:fPX9spPWEzyUg0BLTQbdXCCq7PVSJZGNVKfNpiTQUts=
 github.com/grafana/thema v0.0.0-20230926104747-067284b336bb h1:rqz19YAMtW4PFc+8m30dp3TQFMvirxduai7WCvsBlrQ=
@@ -363,8 +363,8 @@ github.com/prometheus/procfs v0.11.1 h1:xRC8Iq1yyca5ypa9n1EZnWZkt7dwcoRPQwX/5gwa
 github.com/prometheus/procfs v0.11.1/go.mod h1:eesXgaPo1q7lBpVMoMy0ZOFTth9hBn4W/y0/p/ScXhY=
 github.com/protocolbuffers/txtpbfmt v0.0.0-20230328191034-3462fbc510c0 h1:sadMIsgmHpEOGbUs6VtHBXRR1OHevnj7hLx9ZcdNGW4=
 github.com/protocolbuffers/txtpbfmt v0.0.0-20230328191034-3462fbc510c0/go.mod h1:jgxiZysxFPM+iWKwQwPR+y+Jvo54ARd4EisXxKYpB5c=
-github.com/puzpuzpuz/xsync/v2 v2.5.0 h1:2k4qrO/orvmEXZ3hmtHqIy9XaQtPTwzMZk1+iErpE8c=
-github.com/puzpuzpuz/xsync/v2 v2.5.0/go.mod h1:gD2H2krq/w52MfPLE+Uy64TzJDVY7lP2znR9qmR35kU=
+github.com/puzpuzpuz/xsync/v2 v2.5.1 h1:mVGYAvzDSu52+zaGyNjC+24Xw2bQi3kTr4QJ6N9pIIU=
+github.com/puzpuzpuz/xsync/v2 v2.5.1/go.mod h1:gD2H2krq/w52MfPLE+Uy64TzJDVY7lP2znR9qmR35kU=
 github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
 github.com/rivo/uniseg v0.3.4 h1:3Z3Eu6FGHZWSfNKJTOUiPatWwfc7DzJRU04jFUqJODw=
 github.com/rivo/uniseg v0.3.4/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=

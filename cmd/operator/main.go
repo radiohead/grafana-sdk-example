@@ -135,7 +135,7 @@ func main() {
 }
 
 func newRunner(
-	operatorCfg Config,
+	operatorCfg *Config,
 	kubeConfig kubeconfig.NamespacedConfig,
 ) (*operator.Operator, error) {
 	cache := foo.NewCache(1024)

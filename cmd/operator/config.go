@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -31,7 +30,7 @@ type WebhookServerConfig struct {
 	TLSKeyPath  string
 }
 
-func LoadConfigFromEnv() (Config, error) {
+func LoadConfigFromEnv() (*Config, error) {
 	cfg := Config{}
 	cfg.OTelConfig.ServiceName = os.Getenv("OTEL_SERVICE_NAME")
 	switch strings.ToLower(os.Getenv("OTEL_CONN_TYPE")) {
@@ -43,7 +42,7 @@ func LoadConfigFromEnv() (Config, error) {
 		// Default
 		cfg.OTelConfig.ConnType = ConnTypeHTTP
 	default:
-		return Config{}, fmt.Errorf("unknown OTEL_CONN_TYPE '%s'", os.Getenv("OTEL_CONN_TYPE"))
+		return nil, fmt.Errorf("unknown OTEL_CONN_TYPE '%s'", os.Getenv("OTEL_CONN_TYPE"))
 	}
 	cfg.OTelConfig.Host = os.Getenv("OTEL_HOST")
 	portStr := os.Getenv("OTEL_PORT")
@@ -59,7 +58,7 @@ func LoadConfigFromEnv() (Config, error) {
 		var err error
 		cfg.OTelConfig.Port, err = strconv.Atoi(portStr)
 		if err != nil {
-			return Config{}, fmt.Errorf("invalid OTEL_PORT '%s': %w", portStr, err)
+			return nil, fmt.Errorf("invalid OTEL_PORT '%s': %w", portStr, err)
 		}
 	}
 
@@ -70,19 +69,12 @@ func LoadConfigFromEnv() (Config, error) {
 		var err error
 		cfg.WebhookServer.Port, err = strconv.Atoi(whPortStr)
 		if err != nil {
-			return Config{}, fmt.Errorf("invalid WEBHOOK_PORT '%s': %w", whPortStr, err)
+			return nil, fmt.Errorf("invalid WEBHOOK_PORT '%s': %w", whPortStr, err)
 		}
 	}
 
 	cfg.WebhookServer.TLSCertPath = os.Getenv("WEBHOOK_CERT_PATH")
-	if cfg.WebhookServer.TLSCertPath == "" {
-		return Config{}, errors.New("WEBHOOK_CERT_PATH must be a valid file path")
-	}
-
 	cfg.WebhookServer.TLSKeyPath = os.Getenv("WEBHOOK_KEY_PATH")
-	if cfg.WebhookServer.TLSKeyPath == "" {
-		return Config{}, errors.New("WEBHOOK_KEY_PATH must be a valid file path")
-	}
 
-	return cfg, nil
+	return &cfg, nil
 }
