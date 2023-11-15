@@ -8,16 +8,16 @@
     "group": "grafana-sdk-example.ext.grafana.com",
     "versions": [
       {
-        "name": "v0-0",
+        "name": "v1alpha1",
         "served": true,
         "storage": true,
         "schema": {
           "openAPIV3Schema": {
             "properties": {
               "spec": {
-                "description": "spec is the schema of our resource. The spec should include all the user-ediable information for the kind.\n\n\nstatus is where state and status information which may be used or updated by the operator or back-end should be placed\nIf you do not have any such information, you do not need to include this field,\nhowever, as mentioned above, certain fields will be added by the kind system regardless.\nstatus: {\n\tcurrentState: string\n}\nmetadata if where kind- and schema-specific metadata goes. This is typically unused,\nas the kind system's common metadata is always part of `metadata` and covers most metadata use-cases.\nmetadata: {\n\tkindSpecificField: string\n}",
                 "properties": {
                   "name": {
+                    "description": "Name is the name of a Foo.",
                     "type": "string"
                   }
                 },

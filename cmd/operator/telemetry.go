@@ -16,7 +16,7 @@ import (
 )
 
 func SetTraceProvider(cfg OpenTelemetryConfig) error {
-	var err error
+	var terr error
 	var exp trace.SpanExporter
 	switch cfg.ConnType {
 	case ConnTypeGRPC:
@@ -32,13 +32,12 @@ func SetTraceProvider(cfg OpenTelemetryConfig) error {
 		}
 
 		// Set up a trace exporter
-		exp, err = otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+		exp, terr = otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
 	case ConnTypeHTTP:
-		// TODO: better?
-		exp, err = otlptracehttp.New(context.Background())
+		exp, terr = otlptracehttp.New(context.Background())
 	}
-	if err != nil {
-		return err
+	if terr != nil {
+		return terr
 	}
 
 	// Ensure default SDK resources and the required service name are set.

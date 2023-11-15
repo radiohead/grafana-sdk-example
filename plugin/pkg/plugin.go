@@ -45,9 +45,11 @@ func NewPlugin(namespace string, client resource.ClientGenerator, group resource
 			"url", req.URL,
 		)
 
-		snd.Send(&backend.CallResourceResponse{
+		if err := snd.Send(&backend.CallResourceResponse{
 			Status: 404,
-		})
+		}); err != nil {
+			logging.DefaultLogger.Error("error sending response", "err", err)
+		}
 	}
 
 	return &Plugin{
@@ -63,6 +65,8 @@ func (p *Plugin) Start() error {
 // CallResource allows Plugin to implement grafana-plugin-sdk-go/backend/instancemgmt.Instance for an App plugin,
 // Which allows it to be used with grafana-plugin-sdk-go/backend/app.Manage.
 // CallResource downstreams all CallResource requests to the router's handler
-func (p *Plugin) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
+func (p *Plugin) CallResource(
+	ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender,
+) error {
 	return p.router.CallResource(ctx, req, sender)
 }

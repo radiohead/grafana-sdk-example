@@ -19,7 +19,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 
 	"github.com/radiohead/grafana-sdk-example/pkg/foo"
-	foov1 "github.com/radiohead/grafana-sdk-example/pkg/generated/resource/foo"
+	fookind "github.com/radiohead/grafana-sdk-example/pkg/generated/resource/foo/v1alpha1"
 )
 
 const (
@@ -28,63 +28,70 @@ const (
 )
 
 func main() {
+	fmt.Fprintf(os.Stderr, "operator starting")
+
+	if err := run(); err != nil {
+		// TODO: maybe change default SDK logger to write to STDOUT / STDERR.
+		logger := logging.DefaultLogger
+		if _, ok := logger.(*logging.NoOpLogger); ok {
+			fmt.Fprintf(
+				os.Stderr,
+				"error running operator err=%s",
+				err.Error(),
+			)
+		} else {
+			logger.Error(
+				"error running operator",
+				"err", err,
+			)
+		}
+
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "operator stopped")
+
+	os.Exit(0)
+}
+
+func run() error { // nolint: funlen
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	defer cancel()
 
-	// Load the config from the environment
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error parsing config: %s", err.Error())
-		os.Exit(1)
+		return err
 	}
 
-	// Set up telemetry
-	// Logging
 	logging.DefaultLogger = logging.NewSLogLogger(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
-	logger := logging.FromContext(ctx)
 
-	// Tracing
 	if err := SetTraceProvider(cfg.OTelConfig); err != nil {
-		logger.Error(
-			"error configuring tracing",
-			"error", err,
-		)
-		os.Exit(1)
+		return err
 	}
 
-	logger.Info("starting operator...")
-
-	// Load the kube config
 	kubeConfig, err := LoadInClusterConfig()
 	if err != nil {
-		logger.Error(
-			"error loading kubeconfig",
-			"error", err,
-		)
-		os.Exit(1)
+		return err
 	}
 
 	runner, err := newRunner(cfg, kubeConfig)
 	if err != nil {
-		logger.Error(
-			"error initialising the runner",
-			"error", err,
-		)
-		os.Exit(1)
+		return err
 	}
 
 	// Set up metrics exporter
 	exporter := metrics.NewExporter(metrics.ExporterConfig{})
-	exporter.RegisterCollectors(runner.PrometheusCollectors()...)
+	if err := exporter.RegisterCollectors(runner.PrometheusCollectors()...); err != nil {
+		return err
+	}
 	runner.AddController(exporter)
-
-	logger.Info("starting leader election loop")
 
 	// We have to create a vanilla k8s client for leader election.
 	client := clientset.NewForConfigOrDie(&kubeConfig.RestConfig)
 
+	// TODO: re-write to return an error instead of panicking.
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock: &resourcelock.LeaseLock{
 			LeaseMeta: metav1.ObjectMeta{
@@ -129,9 +136,7 @@ func main() {
 		},
 	})
 
-	logger.Info("operator exit complete")
-
-	os.Exit(0)
+	return nil
 }
 
 func newRunner(
@@ -141,7 +146,7 @@ func newRunner(
 	cache := foo.NewCache(1024)
 
 	clientGenerator := k8s.NewClientRegistry(kubeConfig.RestConfig, k8s.ClientConfig{})
-	fooClient, err := clientGenerator.ClientFor(foov1.Schema())
+	fooClient, err := clientGenerator.ClientFor(fookind.Schema())
 	if err != nil {
 		return nil, err
 	}
@@ -151,21 +156,21 @@ func newRunner(
 		return nil, err
 	}
 
-	rec.Wrap(&operator.TypedReconciler[*foov1.Object]{
+	rec.Wrap(&operator.TypedReconciler[*fookind.Object]{
 		ReconcileFunc: foo.NewReconciler(cache).Reconcile,
 	})
 
 	controller := operator.NewInformerController(operator.DefaultInformerControllerConfig())
-	if err := controller.AddReconciler(rec, foov1.Schema().Kind()); err != nil {
+	if err := controller.AddReconciler(rec, fookind.Schema().Kind()); err != nil {
 		return nil, err
 	}
 
-	fooInformer, err := operator.NewKubernetesBasedInformer(foov1.Schema(), fooClient, kubeConfig.Namespace)
+	fooInformer, err := operator.NewKubernetesBasedInformer(fookind.Schema(), fooClient, kubeConfig.Namespace)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = controller.AddInformer(fooInformer, foov1.Schema().Kind()); err != nil {
+	if err = controller.AddInformer(fooInformer, fookind.Schema().Kind()); err != nil {
 		return nil, err
 	}
 
@@ -179,7 +184,7 @@ func newRunner(
 	if err != nil {
 		return nil, err
 	}
-	srv.AddValidatingAdmissionController(foo.NewValidator(cache), foov1.Schema())
+	srv.AddValidatingAdmissionController(foo.NewValidator(cache), fookind.Schema())
 
 	res := operator.New()
 	res.AddController(controller)

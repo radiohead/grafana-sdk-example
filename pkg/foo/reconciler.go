@@ -5,7 +5,7 @@ import (
 
 	"github.com/grafana/grafana-app-sdk/operator"
 
-	"github.com/radiohead/grafana-sdk-example/pkg/generated/resource/foo"
+	foo "github.com/radiohead/grafana-sdk-example/pkg/generated/resource/foo/v1alpha1"
 	"github.com/radiohead/grafana-sdk-example/pkg/instrument"
 )
 

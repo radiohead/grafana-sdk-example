@@ -20,7 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/radiohead/grafana-sdk-example/pkg/generated/resource/foo"
+	foo "github.com/radiohead/grafana-sdk-example/pkg/generated/resource/foo/v1alpha1"
 )
 
 const (
@@ -60,7 +60,7 @@ func main() {
 			},
 		},
 	}); err != nil {
-		logger.Error("failed to initialize instance", "err", err)
+		logger.Error("failed to initialise instance", "err", err)
 		os.Exit(1)
 	}
 
