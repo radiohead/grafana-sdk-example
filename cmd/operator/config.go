@@ -13,8 +13,10 @@ const (
 )
 
 type Config struct {
-	OTelConfig    OpenTelemetryConfig
-	WebhookServer WebhookServerConfig
+	KubeconfigVal  string
+	KubeconfigPath string
+	OTelConfig     OpenTelemetryConfig
+	WebhookServer  WebhookServerConfig
 }
 
 type OpenTelemetryConfig struct {
@@ -75,6 +77,8 @@ func LoadConfigFromEnv() (*Config, error) {
 
 	cfg.WebhookServer.TLSCertPath = os.Getenv("WEBHOOK_CERT_PATH")
 	cfg.WebhookServer.TLSKeyPath = os.Getenv("WEBHOOK_KEY_PATH")
+	cfg.KubeconfigVal = os.Getenv("KUBECONFIG")
+	cfg.KubeconfigPath = os.Getenv("KUBECONFIG_PATH")
 
 	return &cfg, nil
 }

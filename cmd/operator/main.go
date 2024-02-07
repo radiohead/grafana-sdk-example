@@ -71,7 +71,7 @@ func run() error { // nolint: funlen
 		return err
 	}
 
-	kubeConfig, err := LoadInClusterConfig()
+	kubeConfig, err := LoadKubeconfig(cfg.KubeconfigVal, cfg.KubeconfigPath)
 	if err != nil {
 		return err
 	}
