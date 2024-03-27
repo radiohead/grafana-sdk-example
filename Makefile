@@ -5,7 +5,7 @@ COVOUT               := coverage.out
 
 OPERATOR_DOCKERIMAGE := "grafana-sdk-example"
 
-SDK_VER              := 0.14.7
+SDK_VER              := local
 LINTER_VERSION       := 1.55.2
 
 .PHONY: all
